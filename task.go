@@ -1,6 +1,7 @@
 package nxsugar
 
 import (
+	"context"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -19,7 +20,11 @@ type NexusConn struct {
 
 type Task struct {
 	nexus.Task
-	Service       *Service `json:"-"`
+	// Ctx carries the OTel context with the active server span for this task.
+	// Handlers should use it to propagate trace context to outbound calls:
+	//   t.GetConn().TaskPushCtx(t.Ctx, ...)
+	Ctx           context.Context `json:"-"`
+	Service       *Service        `json:"-"`
 	isMocked      bool
 	mockResponses []TaskMockResponse
 	responseCount uint64
@@ -49,7 +54,9 @@ func (t *Task) GetConn() *NexusConn {
 	}
 }
 
-func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Duration, opts ...*nexus.TaskOpts) (interface{}, error) {
+// TaskPushCtx pushes a task to Nexus propagating both the legacy trackid and
+// the OTel W3C traceparent so end-to-end traces are preserved.
+func (nc *NexusConn) TaskPushCtx(ctx context.Context, method string, params interface{}, timeout time.Duration, opts ...*nexus.TaskOpts) (interface{}, error) {
 	if params == nil {
 		params = ei.M{"@metadata": ei.M{"trackid": nc.trackid}}
 	} else if pm, err := ei.N(params).MapStr(); err == nil {
@@ -76,5 +83,11 @@ func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Du
 		response := nc.mockResponses[mockResIdx-1]
 		return response.Result, response.Error
 	}
-	return nc.NexusConn.TaskPush(method, params, timeout, opts...)
+	return nc.NexusConn.TaskPushCtx(ctx, method, params, timeout, opts...)
+}
+
+// TaskPush pushes a task to Nexus without an explicit context.
+// Prefer TaskPushCtx when a context is available (e.g. t.GetConn().TaskPushCtx(t.Ctx, ...)).
+func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Duration, opts ...*nexus.TaskOpts) (interface{}, error) {
+	return nc.TaskPushCtx(context.Background(), method, params, timeout, opts...)
 }

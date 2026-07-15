@@ -752,6 +752,24 @@ func (s *Service) taskPull(n int) {
 			defer s.wg.Done()
 			atomic.AddUint64(&s.stats.TasksRunning, 1)
 			defer atomic.AddUint64(&s.stats.TasksRunning, ^uint64(0))
+
+			// OTel: extract traceparent injected by the task pusher and start
+			// a SERVER span that is a child of the pusher's CLIENT span.
+			ctx := extractTraceparent(wtask.Params)
+			ctx, span := startServerSpan(ctx, wtask.Method, wtask.Path)
+			wtask.Ctx = ctx
+			start := time.Now()
+			defer func() {
+				var taskErr error
+				if e := wtask.Tags["@local-response-error"]; e != nil {
+					if re, ok := e.(*JsonRpcErr); ok {
+						taskErr = re
+					}
+				}
+				recordServerRPCCall(ctx, start, wtask.Method, wtask.Path, taskErr)
+				endServerSpan(span, taskErr)
+			}()
+
 			defer func() {
 				if r := recover(); r != nil {
 					var nerr error
