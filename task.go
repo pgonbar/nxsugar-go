@@ -12,6 +12,7 @@ import (
 
 type NexusConn struct {
 	*nexus.NexusConn
+	ctx              context.Context
 	trackid          string
 	isMocked         bool
 	mockResponses    []TaskMockResponse
@@ -50,7 +51,14 @@ func (t *Task) GetConn() *NexusConn {
 	if conn := t.Task.GetConn(); conn == nil {
 		return nil
 	} else {
-		return &NexusConn{conn, tid, t.isMocked, t.mockResponses, &t.responseCount}
+		return &NexusConn{
+			NexusConn:        conn,
+			ctx:              t.Ctx,
+			trackid:          tid,
+			isMocked:         t.isMocked,
+			mockResponses:    t.mockResponses,
+			responseCountRef: &t.responseCount,
+		}
 	}
 }
 
@@ -86,8 +94,13 @@ func (nc *NexusConn) TaskPushCtx(ctx context.Context, method string, params inte
 	return nc.NexusConn.TaskPushCtx(ctx, method, params, timeout, opts...)
 }
 
-// TaskPush pushes a task to Nexus without an explicit context.
-// Prefer TaskPushCtx when a context is available (e.g. t.GetConn().TaskPushCtx(t.Ctx, ...)).
+// TaskPush pushes a task to Nexus. If the NexusConn was obtained via
+// t.GetConn() inside a handler, the task's OTel context is automatically
+// propagated — no need to call TaskPushCtx explicitly.
 func (nc *NexusConn) TaskPush(method string, params interface{}, timeout time.Duration, opts ...*nexus.TaskOpts) (interface{}, error) {
-	return nc.TaskPushCtx(context.Background(), method, params, timeout, opts...)
+	ctx := nc.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return nc.TaskPushCtx(ctx, method, params, timeout, opts...)
 }

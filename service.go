@@ -249,10 +249,10 @@ func (s *Service) initMethods() {
 				sendRes["shared"] = sharedSchemas
 			}
 
-			_, err := t.SendResult(sendRes)
+			_, err := t.SendResultCtx(t.Ctx, sendRes)
 			if err != nil {
 				s.LogWithFields(ErrorLevel, ei.M{"type": "send_result", "where": fmt.Sprintf("%s%s", t.Path, t.Method)}, "Could not send result: %s", err.Error())
-				t.SendError(ErrInternal, "could not send result", nil)
+				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		},
 		computedSchema: map[string]interface{}{},
@@ -261,7 +261,7 @@ func (s *Service) initMethods() {
 	// Add @info method
 	s.methods["@info"] = &method{
 		f: func(t *Task) {
-			_, err := t.SendResult(ei.M{
+			_, err := t.SendResultCtx(t.Ctx, ei.M{
 				"name":          s.Name,
 				"description":   s.Description,
 				"version":       s.Version,
@@ -276,7 +276,7 @@ func (s *Service) initMethods() {
 			})
 			if err != nil {
 				s.LogWithFields(ErrorLevel, ei.M{"type": "send_result", "where": fmt.Sprintf("%s%s", t.Path, t.Method)}, "Could not send result: %s", err.Error())
-				t.SendError(ErrInternal, "could not send result", nil)
+				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		},
 		computedSchema: map[string]interface{}{},
@@ -285,10 +285,10 @@ func (s *Service) initMethods() {
 	// Add @ping method
 	s.methods["@ping"] = &method{
 		f: func(t *Task) {
-			_, err := t.SendResult("pong")
+			_, err := t.SendResultCtx(t.Ctx, "pong")
 			if err != nil {
 				s.LogWithFields(ErrorLevel, ei.M{"type": "send_result", "where": fmt.Sprintf("%s%s", t.Path, t.Method)}, "Could not send result: %s", err.Error())
-				t.SendError(ErrInternal, "could not send result", nil)
+				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		},
 		computedSchema: map[string]interface{}{},
@@ -308,15 +308,15 @@ func defMethodWrapper(f func(*Task) (interface{}, *JsonRpcErr)) func(*Task) {
 			return
 		}
 		if err != nil {
-			_, serr := t.SendError(err.Cod, err.Mess, err.Dat)
+			_, serr := t.SendErrorCtx(t.Ctx, err.Cod, err.Mess, err.Dat)
 			if serr != nil {
 				t.Service.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", t.Path, t.Method)}, "Could not send error: %s", serr.Error())
 			}
 		} else {
-			_, serr := t.SendResult(res)
+			_, serr := t.SendResultCtx(t.Ctx, res)
 			if serr != nil {
 				t.Service.LogWithFields(ErrorLevel, ei.M{"type": "send_result", "where": fmt.Sprintf("%s%s", t.Path, t.Method)}, "Could not send result: %s", serr.Error())
-				t.SendError(ErrInternal, "could not send result", nil)
+				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		}
 	}
@@ -730,7 +730,7 @@ func (s *Service) taskPull(n int) {
 			var ok bool
 			m, ok = s.methods[wtask.Method]
 			if !ok { // Method not found
-				_, err = wtask.SendError(ErrMethodNotFound, "", nil)
+				_, err = wtask.SendErrorCtx(wtask.Ctx, ErrMethodNotFound, "", nil)
 				if err != nil {
 					s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 				}
@@ -781,7 +781,7 @@ func (s *Service) taskPull(n int) {
 					}
 					stck := debug.Stack()
 					s.LogWithFields(ErrorLevel, ei.M{"type": "task_exception"}, "pull %d: panic serving task: %s: %s", n, nerr.Error(), stck)
-					_, err = wtask.SendError(ErrInternal, fmt.Sprintf("%s: %s", nerr.Error(), stck), nil)
+					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInternal, fmt.Sprintf("%s: %s", nerr.Error(), stck), nil)
 					if err != nil {
 						s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 					}
@@ -795,7 +795,7 @@ func (s *Service) taskPull(n int) {
 					if pactm, err := ei.N(pact.input).MapStr(); err == nil {
 						pactm["@metadata"] = metadata
 						if reflect.DeepEqual(pactm, wtask.Params) {
-							_, err = wtask.SendResult(pact.output)
+							_, err = wtask.SendResultCtx(wtask.Ctx, pact.output)
 							if err != nil {
 								s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 							}
@@ -804,7 +804,7 @@ func (s *Service) taskPull(n int) {
 						}
 					}
 				}
-				_, err = wtask.SendError(ErrPactNotDefined, ErrStr[ErrPactNotDefined], nil)
+				_, err = wtask.SendErrorCtx(wtask.Ctx, ErrPactNotDefined, ErrStr[ErrPactNotDefined], nil)
 				if err != nil {
 					s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 				}
@@ -816,7 +816,7 @@ func (s *Service) taskPull(n int) {
 			if m.inSchema != nil {
 				result, err := m.inSchema.validator.Validate(gojsonschema.NewGoLoader(wtask.Params))
 				if err != nil { // Error with schemas
-					_, err = wtask.SendError(ErrInvalidParams, fmt.Sprintf("jsonschema validation failed: %s", err.Error()), nil)
+					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInvalidParams, fmt.Sprintf("jsonschema validation failed: %s", err.Error()), nil)
 					if err != nil {
 						s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 					}
@@ -824,7 +824,7 @@ func (s *Service) taskPull(n int) {
 					return
 				} else if !result.Valid() { // Schema validation error
 					out := fmt.Sprintf("jsonschema validation failed: %s", schemaValidationErr(result))
-					_, err = wtask.SendError(ErrInvalidParams, out, nil)
+					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInvalidParams, out, nil)
 					if err != nil {
 						s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 					}
@@ -837,7 +837,7 @@ func (s *Service) taskPull(n int) {
 			started := time.Now()
 			if ei.N(wtask.Params).M("@metadata").M("testing").BoolZ() {
 				if m.testf == nil {
-					_, err = wtask.SendError(ErrTestingMethodNotProvided, ErrStr[ErrTestingMethodNotProvided], nil)
+					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrTestingMethodNotProvided, ErrStr[ErrTestingMethodNotProvided], nil)
 					if err != nil {
 						s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 					}
