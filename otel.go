@@ -94,8 +94,9 @@ func endServerSpan(span trace.Span, err error) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("status", "error"))
 	} else {
-		span.SetStatus(codes.Ok, "")
+		span.SetAttributes(attribute.String("status", "ok"))
 	}
 	span.End()
 }
