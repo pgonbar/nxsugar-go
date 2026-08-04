@@ -1,18 +1,14 @@
 package nxsugar
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"os"
+	"sort"
 	"strings"
-	"time"
-
 	"sync"
-
-	"github.com/sirupsen/logrus"
 )
-
-// Singleton logrus logger object with custom format.
-// Verbosity can be changed through SetLogLevel.
-var log *logrus.Logger
 
 const (
 	PanicLevel = "panic"
@@ -23,99 +19,148 @@ const (
 	DebugLevel = "debug"
 )
 
-var logLock *sync.Mutex
+var (
+	loggerMu sync.RWMutex
+	logger   = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	customLogger bool
+)
 
-type customFormatter struct {
+func getLogger() *slog.Logger {
+	loggerMu.RLock()
+	defer loggerMu.RUnlock()
+	return logger
 }
 
-func init() {
-	logLock = &sync.Mutex{}
+// SetLogger replaces the internal logger.  Call this from the host application
+// to share a trace-injecting handler (e.g. logging.Init).  Once called,
+// SetLogLevel and SetJSONOutput become no-ops so the injected handler is
+// preserved.
+func SetLogger(l *slog.Logger) {
+	loggerMu.Lock()
+	logger = l
+	customLogger = true
+	loggerMu.Unlock()
 }
 
-func (f *customFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	path := entry.Data["path"]
-	return []byte(fmt.Sprintf("[%s] [%s] [%s] %s\n", entry.Time.Format(time.RFC3339), strings.ToUpper(entry.Level.String()[:4]), path, entry.Message)), nil
-}
-
-// SetProductionMode sets the log level to JSON format
+// SetJSONOutput toggles between JSON and text output.  No-op when a custom
+// logger has been injected via SetLogger.
 func SetJSONOutput(enabled bool) {
-	logLock.Lock()
+	loggerMu.Lock()
+	defer loggerMu.Unlock()
+	if customLogger {
+		return
+	}
+	var h slog.Handler
+	opts := &slog.HandlerOptions{Level: slog.LevelDebug}
 	if enabled {
-		log = logrus.New()
-		jsonFmt := new(logrus.JSONFormatter)
-		log.Formatter = jsonFmt
-		log.Level = logrus.DebugLevel
+		h = slog.NewJSONHandler(os.Stdout, opts)
 	} else {
-		log = logrus.New()
-		log.Formatter = new(customFormatter)
-		log.Level = logrus.DebugLevel
+		h = slog.NewTextHandler(os.Stdout, opts)
 	}
-	logLock.Unlock()
+	logger = slog.New(h)
 }
 
-// SetLogLevel sets the log level to one of (debug, info, warn, error, fatal, panic)
+// SetLogLevel sets the minimum log level.  No-op when a custom logger has
+// been injected via SetLogger.
 func SetLogLevel(level string) {
-	logLock.Lock()
-	switch strings.ToLower(level) {
-	case PanicLevel:
-		log.Level = logrus.PanicLevel
-	case FatalLevel:
-		log.Level = logrus.FatalLevel
-	case ErrorLevel:
-		log.Level = logrus.ErrorLevel
-	case WarnLevel:
-		log.Level = logrus.WarnLevel
-	case InfoLevel:
-		log.Level = logrus.InfoLevel
-	default:
-		log.Level = logrus.DebugLevel
+	loggerMu.Lock()
+	defer loggerMu.Unlock()
+	if customLogger {
+		return
 	}
-	logLock.Unlock()
+
+	var lvl slog.Level
+	switch strings.ToLower(level) {
+	case PanicLevel, FatalLevel:
+		lvl = slog.LevelError + 1
+	case ErrorLevel:
+		lvl = slog.LevelError
+	case WarnLevel:
+		lvl = slog.LevelWarn
+	case InfoLevel:
+		lvl = slog.LevelInfo
+	default:
+		lvl = slog.LevelDebug
+	}
+
+	h := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl})
+	logger = slog.New(h)
 }
 
-// GetLogLevel returns the current log level
+// GetLogLevel returns the current minimum log level as a string.
 func GetLogLevel() string {
-	logLock.Lock()
-	defer logLock.Unlock()
-	switch log.Level {
-	case logrus.PanicLevel:
+	loggerMu.RLock()
+	defer loggerMu.RUnlock()
+	switch {
+	case logger.Enabled(context.Background(), slog.LevelError+1):
 		return PanicLevel
-	case logrus.FatalLevel:
-		return FatalLevel
-	case logrus.ErrorLevel:
+	case logger.Enabled(context.Background(), slog.LevelError):
 		return ErrorLevel
-	case logrus.WarnLevel:
+	case logger.Enabled(context.Background(), slog.LevelWarn):
 		return WarnLevel
-	case logrus.InfoLevel:
+	case logger.Enabled(context.Background(), slog.LevelInfo):
 		return InfoLevel
-	case logrus.DebugLevel:
+	default:
 		return DebugLevel
 	}
-	return DebugLevel
 }
 
-// Log
-func Log(level string, path string, message string, args ...interface{}) {
-	LogWithFields(level, path, map[string]interface{}{}, message, args...)
-}
-
-// LogWithFields
-func LogWithFields(level string, path string, fields map[string]interface{}, message string, args ...interface{}) {
-	logLock.Lock()
-	defer logLock.Unlock()
-	le := log.WithField("path", path).WithField("data", fields)
+// levelFromString maps a nxsugar level string to slog.Level.
+func levelFromString(level string) slog.Level {
 	switch strings.ToLower(level) {
-	case PanicLevel:
-		le.Panicf(message, args...)
-	case FatalLevel:
-		le.Fatalf(message, args...)
+	case PanicLevel, FatalLevel:
+		return slog.LevelError + 1
 	case ErrorLevel:
-		le.Errorf(message, args...)
+		return slog.LevelError
 	case WarnLevel:
-		le.Warnf(message, args...)
+		return slog.LevelWarn
 	case InfoLevel:
-		le.Infof(message, args...)
+		return slog.LevelInfo
 	default:
-		le.Debugf(message, args...)
+		return slog.LevelDebug
 	}
+}
+
+// Log is the package-level entry point kept for backward compatibility.
+// Prefer LogCtx when a context.Context is available so that trace_id is
+// auto-injected by the handler.
+func Log(level string, path string, message string, args ...interface{}) {
+	LogWithFields(level, path, nil, message, args...)
+}
+
+// LogCtx is the context-aware variant of Log.
+func LogCtx(ctx context.Context, level string, path string, message string, args ...interface{}) {
+	LogWithFieldsCtx(ctx, level, path, nil, message, args...)
+}
+
+// LogWithFields logs a message with structured fields.
+func LogWithFields(level string, path string, fields map[string]interface{}, message string, args ...interface{}) {
+	LogWithFieldsCtx(context.Background(), level, path, fields, message, args...)
+}
+
+// LogWithFieldsCtx is the context-aware variant of LogWithFields.
+// Fields are emitted in sorted key order for deterministic output.
+func LogWithFieldsCtx(ctx context.Context, level string, path string, fields map[string]interface{}, message string, args ...interface{}) {
+	msg := message
+	if len(args) > 0 {
+		msg = fmt.Sprintf(message, args...)
+	}
+
+	attrs := make([]slog.Attr, 0, 1+len(fields))
+	attrs = append(attrs, slog.String("path", path))
+
+	if len(fields) > 0 {
+		keys := make([]string, 0, len(fields))
+		for k := range fields {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			attrs = append(attrs, slog.Any(k, fields[k]))
+		}
+	}
+
+	getLogger().LogAttrs(ctx, levelFromString(level), msg, attrs...)
 }

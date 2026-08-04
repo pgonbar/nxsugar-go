@@ -1,6 +1,7 @@
 package nxsugar
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -352,16 +353,26 @@ func (s *Server) getConnid() string {
 
 // Log allows to log from the server with the default format used by nxsugar
 func (s *Server) Log(level string, message string, args ...interface{}) {
+	s.LogCtx(context.Background(), level, message, args...)
+}
+
+// LogCtx is the context-aware variant of Log.
+func (s *Server) LogCtx(ctx context.Context, level string, message string, args ...interface{}) {
 	fields := map[string]interface{}{}
 	connid := s.getConnid()
 	if connid != "" {
 		fields["connid"] = connid
 	}
-	LogWithFields(level, s.logPath, fields, message, args...)
+	LogWithFieldsCtx(ctx, level, s.logPath, fields, message, args...)
 }
 
 // LogWithFields allows to log from the server with the default format used by nxsugar adding some custom fields
 func (s *Server) LogWithFields(level string, fields map[string]interface{}, message string, args ...interface{}) {
+	s.LogWithFieldsCtx(context.Background(), level, fields, message, args...)
+}
+
+// LogWithFieldsCtx is the context-aware variant of LogWithFields.
+func (s *Server) LogWithFieldsCtx(ctx context.Context, level string, fields map[string]interface{}, message string, args ...interface{}) {
 	if fields == nil {
 		fields = map[string]interface{}{}
 	}
@@ -369,5 +380,5 @@ func (s *Server) LogWithFields(level string, fields map[string]interface{}, mess
 	if connid != "" {
 		fields["connid"] = connid
 	}
-	LogWithFields(level, s.logPath, fields, message, args...)
+	LogWithFieldsCtx(ctx, level, s.logPath, fields, message, args...)
 }

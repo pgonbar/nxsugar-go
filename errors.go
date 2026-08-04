@@ -2,6 +2,7 @@ package nxsugar
 
 import (
 	"fmt"
+	"log/slog"
 
 	nexus "github.com/nayarsystems/nxgo/nxcore"
 )
@@ -60,6 +61,16 @@ type JsonRpcErr struct {
 
 func (e *JsonRpcErr) Error() string {
 	return fmt.Sprintf("[%d] %s", e.Cod, e.Mess)
+}
+
+// LogValue makes *JsonRpcErr serialize as a structured object instead of a
+// flat string when passed to a slog handler. The json tags on JsonRpcErr
+// already match the desired field names.
+func (e *JsonRpcErr) LogValue() slog.Value {
+	if e == nil {
+		return slog.StringValue("<nil>")
+	}
+	return slog.AnyValue(*e)
 }
 
 func (e *JsonRpcErr) Code() int {
