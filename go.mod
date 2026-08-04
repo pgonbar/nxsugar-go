@@ -2,7 +2,7 @@ module github.com/nayarsystems/nxsugar-go
 
 go 1.26.4
 
-replace github.com/nayarsystems/nxgo => /home/pau/code/nxgo
+replace github.com/nayarsystems/nxgo => github.com/pgonbar/nxgo v1.9.0-rc1
 
 require (
 	github.com/gopherjs/gopherjs v1.21.0
