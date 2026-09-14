@@ -867,7 +867,11 @@ func (s *Service) taskPull(n int) {
 					}
 					stck := debug.Stack()
 					s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "task_exception"}, "pull %d: panic serving task: %s: %s", n, nerr.Error(), stck)
-					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInternal, fmt.Sprintf("%s: %s", nerr.Error(), stck), nil)
+					mess := fmt.Sprintf("%s: %s", nerr.Error(), stck)
+					// Mark the response error so the deferred server-span/metrics
+					// closer sees the failure instead of recording a success.
+					wtask.Tags["@local-response-error"] = NewJsonRpcErr(ErrInternal, mess, nil)
+					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInternal, mess, nil)
 					if err != nil {
 						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "where": fmt.Sprintf("%s%s", wtask.Path, wtask.Method)}, "Could not send error: %s", err.Error())
 					}
