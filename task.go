@@ -66,7 +66,9 @@ func (t *Task) GetConn() *NexusConn {
 // the OTel W3C traceparent so end-to-end traces are preserved.
 func (nc *NexusConn) TaskPushCtx(ctx context.Context, method string, params interface{}, timeout time.Duration, opts ...*nexus.TaskOpts) (interface{}, error) {
 	if params == nil {
-		params = ei.M{"@metadata": ei.M{"trackid": nc.trackid}}
+		// Plain map (not ei.M): nxcore's injectTraceparent must be able to
+		// enrich this value with the traceparent.
+		params = map[string]interface{}{"@metadata": map[string]interface{}{"trackid": nc.trackid}}
 	} else if pm, err := ei.N(params).MapStr(); err == nil {
 		if pm == nil {
 			pm = map[string]interface{}{}
