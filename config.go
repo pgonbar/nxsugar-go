@@ -287,7 +287,8 @@ If the config has not been previously parsed `NewServerFromConfig` parses it.
 func NewServerFromConfig() (*ServerFromConfig, error) {
 	parseFlags()
 	if err, errM := parseConfig(); err != nil {
-		LogWithFields(ErrorLevel, "config", errM, err.Error())
+		errM["error"] = err.Error()
+		LogWithFields(ErrorLevel, "config", errM, "invalid config")
 		return nil, err
 	}
 	return &ServerFromConfig{
@@ -319,7 +320,7 @@ func (s *ServerFromConfig) AddService(name string) (*Service, error) {
 	svcfg, ok := configServer.Services[name]
 	if !ok {
 		err := fmt.Errorf(MissingConfigErr, "services."+name)
-		LogWithFields(ErrorLevel, "config", ei.M{"type": "missing_param"}, err.Error())
+		LogWithFields(ErrorLevel, "config", ei.M{"type": "missing_param", "error": err.Error()}, "missing config param")
 		return nil, err
 	}
 	if svcfg.Version == "" {
@@ -368,13 +369,14 @@ If the config has not been previously parsed `NewServiceFromConfig` parses it.
 func NewServiceFromConfig(name string) (*Service, error) {
 	parseFlags()
 	if err, errM := parseConfig(); err != nil {
-		LogWithFields(ErrorLevel, "config", errM, err.Error())
+		errM["error"] = err.Error()
+		LogWithFields(ErrorLevel, "config", errM, "invalid config")
 		return nil, err
 	}
 	svc, ok := configServer.Services[name]
 	if !ok {
 		err := fmt.Errorf(MissingConfigErr, "services."+name)
-		LogWithFields(ErrorLevel, "config", ei.M{"type": "missing_param"}, err.Error())
+		LogWithFields(ErrorLevel, "config", ei.M{"type": "missing_param", "error": err.Error()}, "missing config param")
 		return nil, err
 	}
 	if svc.Version == "" {
@@ -404,7 +406,8 @@ If the config has not been previously parsed `GetConfig` parses it.
 func GetConfig() (map[string]interface{}, error) {
 	parseFlags()
 	if err, errM := parseConfig(); err != nil {
-		LogWithFields(ErrorLevel, "config", errM, err.Error())
+		errM["error"] = err.Error()
+		LogWithFields(ErrorLevel, "config", errM, "invalid config")
 		return nil, err
 	}
 	return config, nil

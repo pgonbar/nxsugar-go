@@ -169,7 +169,7 @@ func (s *Server) AddSharedSchemaFromFile(id string, file string) error {
 	contents, err := ioutil.ReadFile(file)
 	if err != nil {
 		err = fmt.Errorf("error adding shared jsonschema (%s) from file (%s): %s", id, file, err.Error())
-		s.LogWithFields(ErrorLevel, ei.M{"type": "shared_file"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "shared_file", "error": err.Error()}, "error adding shared schema from file")
 		return err
 	}
 	return s.addSharedSchema(id, string(contents))
@@ -181,13 +181,13 @@ func (s *Server) addSharedSchema(id string, schema string) error {
 	}
 	if _, ok := s.sharedSchemas[id]; ok {
 		err := fmt.Errorf("error adding shared jsonschema (%s): an schema with given id already exists", id)
-		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared", "error": err.Error()}, "error adding shared schema")
 		return err
 	}
 	loader, err := getSchemaLoaderFromJson(schema)
 	if err != nil {
 		err = fmt.Errorf("error adding shared jsonschema (%s): %s", id, err.Error())
-		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared", "error": err.Error()}, "error adding shared schema")
 		return err
 	}
 	s.sharedSchemas[id] = loader
@@ -239,14 +239,14 @@ func (s *Server) Serve() error {
 	_, err := url.Parse(s.Url)
 	if err != nil {
 		err = fmt.Errorf("invalid nexus url (%s): %s", s.Url, err.Error())
-		s.LogWithFields(ErrorLevel, ei.M{"type": "invalid_url"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "invalid_url", "error": err.Error()}, "invalid nexus url")
 		return err
 	}
 
 	// Check services
 	if s.services == nil || len(s.services) == 0 {
 		err = fmt.Errorf("no services to serve")
-		s.LogWithFields(ErrorLevel, ei.M{"type": "no_services"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "no_services", "error": err.Error()}, "no services to serve")
 		return err
 	}
 
@@ -257,10 +257,10 @@ func (s *Server) Serve() error {
 	s.connLock.Unlock()
 	if err != nil {
 		if err == nxcli.ErrVersionIncompatible {
-			s.LogWithFields(WarnLevel, ei.M{"type": "incompatible_version"}, "connecting to an incompatible version of nexus at (%s): client (%s) server (%s)", s.Url, nxcli.Version, s.nc.NexusVersion)
+			s.LogWithFields(WarnLevel, ei.M{"type": "incompatible_version", "url": s.Url, "client_version": nxcli.Version, "server_version": s.nc.NexusVersion}, "incompatible nexus version")
 		} else {
 			err = fmt.Errorf("can't connect to nexus server (%s): %s", s.Url, err.Error())
-			s.LogWithFields(ErrorLevel, ei.M{"type": "connection_error"}, err.Error())
+			s.LogWithFields(ErrorLevel, ei.M{"type": "connection_error", "error": err.Error()}, "connection to nexus failed")
 			return err
 		}
 	}
@@ -272,7 +272,7 @@ func (s *Server) Serve() error {
 	s.connLock.Unlock()
 	if err != nil {
 		err = fmt.Errorf("can't login to nexus server (%s) as (%s): %s", s.Url, s.User, err.Error())
-		s.LogWithFields(ErrorLevel, ei.M{"type": "login_error"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "login_error", "error": err.Error()}, "nexus login failed")
 
 		return err
 	}

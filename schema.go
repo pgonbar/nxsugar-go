@@ -56,7 +56,7 @@ func (s *Service) AddSharedSchemaFromFile(id string, file string) error {
 	contents, err := ioutil.ReadFile(file)
 	if err != nil {
 		err = fmt.Errorf("error adding shared jsonschema (%s) from file (%s): %s", id, file, err.Error())
-		s.LogWithFields(ErrorLevel, ei.M{"type": "shared_file"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "shared_file", "error": err.Error()}, "error adding shared schema from file")
 		return err
 	}
 	return s.addSharedSchema(id, string(contents))
@@ -68,13 +68,13 @@ func (s *Service) addSharedSchema(id string, schema string) error {
 	}
 	if _, ok := s.sharedSchemas[id]; ok {
 		err := fmt.Errorf("error adding shared jsonschema (%s): an schema with given id already exists", id)
-		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared", "error": err.Error()}, "error adding shared schema")
 		return err
 	}
 	loader, err := getSchemaLoaderFromJson(schema)
 	if err != nil {
 		err = fmt.Errorf("error adding shared jsonschema (%s): %s", id, err.Error())
-		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared"}, err.Error())
+		s.LogWithFields(ErrorLevel, ei.M{"type": "adding_shared", "error": err.Error()}, "error adding shared schema")
 		return err
 	}
 	s.sharedSchemas[id] = loader
