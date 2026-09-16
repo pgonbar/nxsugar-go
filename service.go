@@ -337,7 +337,7 @@ func (s *Service) initMethods() {
 
 			_, err := t.SendResultCtx(t.Ctx, sendRes)
 			if err != nil {
-				s.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "path": t.Path, "method": t.Method, "error": err.Error()}, "could not send result")
+				s.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "task_path": t.Path, "method": t.Method, "error": err.Error()}, "could not send result")
 				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		},
@@ -361,7 +361,7 @@ func (s *Service) initMethods() {
 				"stats":         *s.stats,
 			})
 			if err != nil {
-				s.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "path": t.Path, "method": t.Method, "error": err.Error()}, "could not send result")
+				s.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "task_path": t.Path, "method": t.Method, "error": err.Error()}, "could not send result")
 				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		},
@@ -373,7 +373,7 @@ func (s *Service) initMethods() {
 		f: func(t *Task) {
 			_, err := t.SendResultCtx(t.Ctx, "pong")
 			if err != nil {
-				s.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "path": t.Path, "method": t.Method, "error": err.Error()}, "could not send result")
+				s.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "task_path": t.Path, "method": t.Method, "error": err.Error()}, "could not send result")
 				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		},
@@ -396,12 +396,12 @@ func defMethodWrapper(f func(*Task) (interface{}, *JsonRpcErr)) func(*Task) {
 		if err != nil {
 			_, serr := t.SendErrorCtx(t.Ctx, err.Cod, err.Mess, err.Dat)
 			if serr != nil {
-				t.Service.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_error", "path": t.Path, "method": t.Method, "error": serr.Error()}, "could not send error")
+				t.Service.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_error", "task_path": t.Path, "method": t.Method, "error": serr.Error()}, "could not send error")
 			}
 		} else {
 			_, serr := t.SendResultCtx(t.Ctx, res)
 			if serr != nil {
-				t.Service.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "path": t.Path, "method": t.Method, "error": serr.Error()}, "could not send result")
+				t.Service.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "task_path": t.Path, "method": t.Method, "error": serr.Error()}, "could not send result")
 				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		}
@@ -817,7 +817,7 @@ func (s *Service) taskPull(n int) {
 			if !ok { // Method not found
 				_, err = wtask.SendErrorCtx(context.Background(), ErrMethodNotFound, "", nil)
 				if err != nil {
-					s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
+					s.LogWithFields(ErrorLevel, ei.M{"type": "send_error", "task_path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
 				}
 				atomic.AddUint64(&s.stats.TasksMethodNotFound, 1)
 				s.threadsSem.Release()
@@ -848,11 +848,11 @@ func (s *Service) taskPull(n int) {
 			// Log pull after span is started so trace_id/span_id are available.
 			// Debug: the canonical line for the task is task_completed.
 			if !m.disablePullLog {
-				pullFields := ei.M{"type": "pull", "pull_index": n, "path": wtask.Path, "method": wtask.Method, "user": wtask.User}
+				pullFields := ei.M{"type": "pull", "pull_index": n, "task_id": wtask.Id, "task_path": wtask.Path, "method": wtask.Method, "user": wtask.User}
 				if m.paramsInLogs {
 					pullFields["params"] = sanitizedParams
 				}
-				s.LogWithFieldsCtx(wtask.Ctx, DebugLevel, pullFields, "task pulled")
+				s.LogWithFieldsCtx(wtask.Ctx, DebugLevel, pullFields, "%s", wtask.Method+" pulled")
 			}
 			defer func() {
 				var taskErr error
@@ -875,14 +875,14 @@ func (s *Service) taskPull(n int) {
 						nerr = fmt.Errorf("pkg: %v", r)
 					}
 					stck := debug.Stack()
-					s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "task_exception", "pull_index": n, "error": nerr.Error(), "stack": string(stck)}, "panic serving task")
+					s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "task_exception", "pull_index": n, "task_id": wtask.Id, "task_path": wtask.Path, "method": wtask.Method, "error": nerr.Error(), "stack": string(stck)}, "%s", wtask.Method+" panicked")
 					mess := fmt.Sprintf("%s: %s", nerr.Error(), stck)
 					// Mark the response error so the deferred server-span/metrics
 					// closer sees the failure instead of recording a success.
 					wtask.Tags["@local-response-error"] = NewJsonRpcErr(ErrInternal, mess, nil)
 					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInternal, mess, nil)
 					if err != nil {
-						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
+						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "task_path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
 					}
 				}
 			}()
@@ -896,7 +896,7 @@ func (s *Service) taskPull(n int) {
 						if reflect.DeepEqual(pactm, wtask.Params) {
 							_, err = wtask.SendResultCtx(wtask.Ctx, pact.output)
 							if err != nil {
-								s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
+								s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "task_path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
 							}
 							atomic.AddUint64(&s.stats.TasksServed, 1)
 							return
@@ -905,7 +905,7 @@ func (s *Service) taskPull(n int) {
 				}
 				_, err = wtask.SendErrorCtx(wtask.Ctx, ErrPactNotDefined, ErrStr[ErrPactNotDefined], nil)
 				if err != nil {
-					s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
+					s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "task_path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
 				}
 				atomic.AddUint64(&s.stats.TasksServed, 1)
 				return
@@ -917,7 +917,7 @@ func (s *Service) taskPull(n int) {
 				if err != nil { // Error with schemas
 					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInvalidParams, fmt.Sprintf("jsonschema validation failed: %s", err.Error()), nil)
 					if err != nil {
-						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
+						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "task_path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
 					}
 					atomic.AddUint64(&s.stats.TasksServed, 1)
 					return
@@ -925,7 +925,7 @@ func (s *Service) taskPull(n int) {
 					out := fmt.Sprintf("jsonschema validation failed: %s", schemaValidationErr(result))
 					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrInvalidParams, out, nil)
 					if err != nil {
-						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
+						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "task_path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
 					}
 					atomic.AddUint64(&s.stats.TasksServed, 1)
 					return
@@ -938,7 +938,7 @@ func (s *Service) taskPull(n int) {
 				if m.testf == nil {
 					_, err = wtask.SendErrorCtx(wtask.Ctx, ErrTestingMethodNotProvided, ErrStr[ErrTestingMethodNotProvided], nil)
 					if err != nil {
-						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
+						s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, ei.M{"type": "send_error", "task_path": wtask.Path, "method": wtask.Method, "error": err.Error()}, "could not send error")
 					}
 					atomic.AddUint64(&s.stats.TasksServed, 1)
 					return
@@ -959,7 +959,7 @@ func (s *Service) taskPull(n int) {
 			}
 
 			// Canonical task line: one completion record per task.
-			completedFields := ei.M{"type": "task_completed", "pull_index": n, "path": wtask.Path, "method": wtask.Method, "user": wtask.User, "took_ms": took.Milliseconds()}
+			completedFields := ei.M{"type": "task_completed", "pull_index": n, "task_id": wtask.Id, "task_path": wtask.Path, "method": wtask.Method, "user": wtask.User, "took_ms": took.Milliseconds()}
 			if m.paramsInLogs {
 				completedFields["params"] = sanitizedParams
 			}
@@ -969,9 +969,9 @@ func (s *Service) taskPull(n int) {
 			if wtask.Tags["@local-response-error"] != nil {
 				errVal := sanitizeAndView(wtask.Tags["@local-response-error"], m.redactParams, m.paramsMaxLen)
 				completedFields["error"] = errVal
-				s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, completedFields, "task completed with error")
+				s.LogWithFieldsCtx(wtask.Ctx, ErrorLevel, completedFields, "%s", wtask.Method+" failed")
 			} else {
-				s.LogWithFieldsCtx(wtask.Ctx, InfoLevel, completedFields, "task completed")
+				s.LogWithFieldsCtx(wtask.Ctx, InfoLevel, completedFields, "%s", wtask.Method+" completed")
 			}
 
 			// Validate result schema
