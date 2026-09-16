@@ -401,7 +401,7 @@ func defMethodWrapper(f func(*Task) (interface{}, *JsonRpcErr)) func(*Task) {
 		} else {
 			_, serr := t.SendResultCtx(t.Ctx, res)
 			if serr != nil {
-				t.Service.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "task_path": t.Path, "method": t.Method, "error": serr.Error()}, "could not send result")
+				t.Service.LogWithFieldsCtx(t.Ctx, ErrorLevel, ei.M{"type": "send_result", "rpc.service": t.Path, "rpc.method": t.Method, "error.message": serr.Error()}, "could not send result")
 				t.SendErrorCtx(t.Ctx, ErrInternal, "could not send result", nil)
 			}
 		}
@@ -1055,18 +1055,18 @@ func (s *Service) String() string {
 
 func (s *Service) logMap() map[string]interface{} {
 	return ei.M{
-		"type":          "start",
-		"url.full":      s.Url,
-		"user":          s.User,
-		"connid":        s.getConnid(),
-		"version":       s.Version,
-		"nexus_path":    s.Path,
-		"pulls":         s.Pulls,
-		"pull_timeout":  s.PullTimeout.String(),
-		"max_threads":   s.MaxThreads,
-		"log_level":     s.LogLevel,
-		"stats_period":  s.StatsPeriod.String(),
-		"graceful_exit": s.GracefulExit.String(),
+		"type":                "start",
+		"url.full":            s.Url,
+		"nexus.user":          s.User,
+		"connid":              s.getConnid(),
+		"nexus.version":       s.Version,
+		"nexus.path":          s.Path,
+		"nexus.pulls":         s.Pulls,
+		"nexus.pull_timeout":  s.PullTimeout.String(),
+		"nexus.max_threads":   s.MaxThreads,
+		"nexus.log_level":     s.LogLevel,
+		"nexus.stats_period":  s.StatsPeriod.String(),
+		"nexus.graceful_exit": s.GracefulExit.String(),
 	}
 }
 
