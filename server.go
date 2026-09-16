@@ -257,7 +257,7 @@ func (s *Server) Serve() error {
 	s.connLock.Unlock()
 	if err != nil {
 		if err == nxcli.ErrVersionIncompatible {
-			s.LogWithFields(WarnLevel, ei.M{"type": "incompatible_version", "url": s.Url, "client_version": nxcli.Version, "server_version": s.nc.NexusVersion}, "incompatible nexus version")
+			s.LogWithFields(WarnLevel, ei.M{"type": "incompatible_version", "url.full": s.Url, "client_version": fmt.Sprint(nxcli.Version), "server_version": fmt.Sprint(s.nc.NexusVersion)}, "incompatible nexus version")
 		} else {
 			err = fmt.Errorf("can't connect to nexus server (%s): %s", s.Url, err.Error())
 			s.LogWithFields(ErrorLevel, ei.M{"type": "connection_error", "error": err.Error()}, "connection to nexus failed")
