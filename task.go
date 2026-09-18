@@ -3,6 +3,7 @@ package nxsugar
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +27,8 @@ type Task struct {
 	//   t.GetConn().TaskPushCtx(t.Ctx, ...)
 	Ctx           context.Context `json:"-"`
 	Service       *Service        `json:"-"`
+	logFieldsMu   sync.Mutex
+	logFields     map[string]interface{}
 	isMocked      bool
 	mockResponses []TaskMockResponse
 	responseCount uint64

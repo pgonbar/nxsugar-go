@@ -755,6 +755,8 @@ func (s *Service) Serve() error {
 			s.LogWithFields(ErrorLevel, ei.M{"type": "graceful_timeout", "error.message": err.Error()}, "graceful stop timeout")
 			return err
 		case <-s.nc.GetContext().Done(): // Nexus connection ended
+			// This case can only fire when the connection context is done,
+			// so GetContext().Err() is always non-nil here.
 			if s.isStopping() {
 				if graceful {
 					s.LogWithFields(DebugLevel, ei.M{"type": "graceful"}, "graceful: done")
@@ -763,17 +765,11 @@ func (s *Service) Serve() error {
 				}
 				return nil
 			}
-			if ctxErr := s.nc.GetContext().Err(); ctxErr != nil {
-				err = fmt.Errorf("stop: nexus connection ended: %s", ctxErr.Error())
-				s.LogWithFields(ErrorLevel, ei.M{"type": "connection_ended", "error.message": err.Error()}, "nexus connection ended")
-				return err
-			}
-			err = fmt.Errorf("stop: nexus connection ended: stopped serving")
+			err = fmt.Errorf("stop: nexus connection ended: %s", s.nc.GetContext().Err().Error())
 			s.LogWithFields(ErrorLevel, ei.M{"type": "connection_ended", "error.message": err.Error()}, "nexus connection ended")
 			return err
 		}
 	}
-	return nil
 }
 
 func (s *Service) taskPull(n int) {
@@ -955,6 +951,9 @@ func (s *Service) taskPull(n int) {
 				if m.paramsInLogs {
 					timeFields["params"] = sanitizedParams
 				}
+				for k, v := range wtask.mergedLogFields() {
+					timeFields[k] = v
+				}
 				s.LogWithFieldsCtx(wtask.Ctx, InfoLevel, timeFields, "task exceeded time limit")
 			}
 
@@ -965,6 +964,10 @@ func (s *Service) taskPull(n int) {
 			}
 			if m.enableResponseResultLog && wtask.Tags["@local-response-result"] != nil {
 				completedFields["result"] = sanitizeAndView(wtask.Tags["@local-response-result"], m.redactParams, m.paramsMaxLen)
+			}
+			// Business fields accumulated by the handler via Task.LogFields.
+			for k, v := range wtask.mergedLogFields() {
+				completedFields[k] = v
 			}
 			if wtask.Tags["@local-response-error"] != nil {
 				errVal := sanitizeAndView(wtask.Tags["@local-response-error"], m.redactParams, m.paramsMaxLen)
